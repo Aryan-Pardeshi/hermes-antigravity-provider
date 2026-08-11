@@ -117,21 +117,24 @@ hermes plugins list
 
 The `antigravity` row should read `enabled`.
 
-### 6. Set the placeholder API key
+### 6. Credential and bridge: handled for you
 
-Hermes requires a credential for every provider. The bridge is unauthenticated loopback, so the value only has to be non-empty — your real Antigravity credential stays inside `agy` and is never read by Hermes or by this package.
+Two things used to be manual here and no longer are.
 
-```bash
-export HERMES_ANTIGRAVITY_API_KEY=local-bridge
-```
+**The credential.** Hermes requires one for every provider. The bridge is
+unauthenticated loopback, so the plugin sets `HERMES_ANTIGRAVITY_API_KEY` to a
+placeholder on import. Your real Antigravity credential stays inside `agy` and
+is never read by Hermes or by this package. Set the variable yourself only if
+you want a different value.
 
-Windows PowerShell:
+**The bridge.** The plugin checks whether anything is serving its base URL and,
+if not, starts one detached so it outlives the Hermes process. Set
+`HERMES_ANTIGRAVITY_NO_AUTOSTART=1` to turn that off and manage it yourself.
 
-```powershell
-$env:HERMES_ANTIGRAVITY_API_KEY = "local-bridge"
-```
-
-Without it, Hermes fails with `No usable credentials found for provider 'antigravity'`.
+Autostart needs an interpreter that can import `hermes_antigravity`. Hermes runs
+in its own venv, which usually cannot, so the plugin tries `sys.executable`
+first and then each `python` on `PATH`. If none of them work, point
+`HERMES_ANTIGRAVITY_PYTHON` at the interpreter you installed the package into.
 
 ### 7. Check everything
 
@@ -157,7 +160,10 @@ Any `[fail]` line tells you the command to run.
 python -m hermes_antigravity serve
 ```
 
-It listens on `http://127.0.0.1:8787/v1`, loopback only. Leave it running while you use Hermes — the provider talks to it.
+It listens on `http://127.0.0.1:8787/v1`, loopback only.
+
+You normally do not need this — the plugin starts the bridge on demand. Run it
+by hand when you want to watch its output, or when autostart is disabled.
 
 To use a different port:
 
@@ -234,7 +240,9 @@ The first request sends the full conversation. `agy` returns a `conversation_id`
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `HERMES_ANTIGRAVITY_API_KEY` | Placeholder credential; any non-empty value. Required by Hermes. | unset — Hermes errors without it |
+| `HERMES_ANTIGRAVITY_API_KEY` | Placeholder credential; any non-empty value | set to `local-bridge` by the plugin |
+| `HERMES_ANTIGRAVITY_NO_AUTOSTART` | Any non-empty value disables bridge autostart | unset |
+| `HERMES_ANTIGRAVITY_PYTHON` | Interpreter used to start the bridge | `sys.executable`, then `PATH` |
 | `HERMES_ANTIGRAVITY_COMMAND` | Path to the `agy` binary | found on `PATH` |
 | `AGY_CLI_PATH` | Alternate path variable, checked second | — |
 | `HERMES_ANTIGRAVITY_BASE_URL` | Where the provider expects the bridge | `http://127.0.0.1:8787/v1` |
@@ -252,11 +260,11 @@ The first request sends the full conversation. `agy` returns a `conversation_id`
 
 | Symptom | Cause and fix |
 | --- | --- |
-| `No usable credentials found for provider 'antigravity'` | `HERMES_ANTIGRAVITY_API_KEY` is unset. See step 6; any non-empty value works. |
+| `No usable credentials found for provider 'antigravity'` | The plugin sets this automatically; seeing it means an older copy of the plugin is installed. Re-copy step 4, or set `HERMES_ANTIGRAVITY_API_KEY` to any non-empty value. |
 | Hermes does not list the provider | The plugin is discovered but not enabled. Run `hermes plugins enable antigravity`, then check `hermes plugins list`. |
 | Plugin not discovered at all | It went into the wrong directory. Hermes home is often `%LOCALAPPDATA%\hermes` on Windows, not `~/.hermes` — check `echo $HERMES_HOME` and redo step 4. |
 | `hermes-antigravity: command not found` | The console script directory is not on `PATH`. Use `python -m hermes_antigravity` instead. |
-| Connection refused from Hermes | The bridge is not running. Start it with `python -m hermes_antigravity serve` and confirm with `curl http://127.0.0.1:8787/v1/models`. |
+| Connection refused from Hermes | Autostart could not find an interpreter with the package. Set `HERMES_ANTIGRAVITY_PYTHON`, or start the bridge yourself with `python -m hermes_antigravity serve`. |
 | `'agy models' returned no models` | `agy` is not logged in. Run `agy auth login`. |
 
 ## Development
