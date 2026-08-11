@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-antigravity-provider"
+version = "0.1.0"
+description = "Run Google Antigravity models in Hermes Agent through the official agy CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["hermes-agent", "antigravity", "agy", "llm", "provider"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+hermes-antigravity = "hermes_antigravity.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/Aryan-Pardeshi/hermes-antigravity-provider"
+
+[tool.setuptools]
+packages = ["hermes_antigravity"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

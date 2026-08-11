@@ -1,0 +1,10 @@
+kind: model-provider
+name: antigravity
+display_name: Google Antigravity (agy)
+description: Antigravity models through the official agy CLI, served over a local OpenAI-compatible bridge.
+version: 0.1.0
+homepage: https://github.com/Aryan-Pardeshi/hermes-antigravity-provider
+auth_methods:
+  - external_cli
+requires:
+  - agy

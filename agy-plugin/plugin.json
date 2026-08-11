@@ -1,0 +1,6 @@
+{
+  "name": "hermes-antigravity",
+  "version": "0.1.0",
+  "description": "Minimal agents used by the Hermes Antigravity provider. Installed by 'hermes-antigravity setup'.",
+  "agents": "./agents"
+}
