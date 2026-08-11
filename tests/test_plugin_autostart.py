@@ -149,3 +149,40 @@ class TestEnsureBridge:
         )
 
         assert plugin.ensure_bridge("http://127.0.0.1:8787/v1", wait_seconds=0.1) is False
+
+
+class TestNoConsoleWindows:
+    """Spawned helpers must not flash or leave terminal windows on Windows."""
+
+    def test_no_window_flag_on_windows(self, plugin, monkeypatch):
+        monkeypatch.setattr(plugin.os, "name", "nt")
+        assert plugin._no_window_flags() == plugin._CREATE_NO_WINDOW
+
+    def test_no_flag_off_windows(self, plugin, monkeypatch):
+        monkeypatch.setattr(plugin.os, "name", "posix")
+        assert plugin._no_window_flags() == 0
+
+    def test_detached_process_flag_is_not_used(self, plugin):
+        # DETACHED_PROCESS (0x8) detaches from the parent console but still
+        # lets Windows allocate a new visible one for python.exe.
+        source = PLUGIN_PATH.read_text(encoding="utf-8")
+        assert "0x00000008" not in source
+        assert plugin._CREATE_NO_WINDOW == 0x08000000
+
+    def test_pythonw_is_preferred_when_present(self, plugin, monkeypatch, tmp_path):
+        monkeypatch.setattr(plugin.os, "name", "nt")
+        pythonw = tmp_path / "pythonw.exe"
+        pythonw.write_text("")
+        monkeypatch.setattr(plugin.os.path, "isfile", lambda p: str(p) == str(pythonw))
+
+        assert plugin._windowless_python(str(tmp_path / "python.exe")) == str(pythonw)
+
+    def test_python_kept_when_pythonw_missing(self, plugin, monkeypatch):
+        monkeypatch.setattr(plugin.os, "name", "nt")
+        monkeypatch.setattr(plugin.os.path, "isfile", lambda p: False)
+
+        assert plugin._windowless_python(r"C:\py\python.exe") == r"C:\py\python.exe"
+
+    def test_unchanged_off_windows(self, plugin, monkeypatch):
+        monkeypatch.setattr(plugin.os, "name", "posix")
+        assert plugin._windowless_python("/usr/bin/python3") == "/usr/bin/python3"

@@ -131,6 +131,10 @@ you want a different value.
 if not, starts one detached so it outlives the Hermes process. Set
 `HERMES_ANTIGRAVITY_NO_AUTOSTART=1` to turn that off and manage it yourself.
 
+The bridge is started with `CREATE_NO_WINDOW`, and with `pythonw.exe` when it
+sits next to the chosen interpreter, so nothing appears on screen. Use
+`python -m hermes_antigravity serve` in a terminal when you want to watch it.
+
 Autostart needs an interpreter that can import `hermes_antigravity`. Hermes runs
 in its own venv, which usually cannot, so the plugin tries `sys.executable`
 first and then each `python` on `PATH`. If none of them work, point
@@ -266,6 +270,7 @@ The first request sends the full conversation. `agy` returns a `conversation_id`
 | `hermes-antigravity: command not found` | The console script directory is not on `PATH`. Use `python -m hermes_antigravity` instead. |
 | Connection refused from Hermes | Autostart could not find an interpreter with the package. Set `HERMES_ANTIGRAVITY_PYTHON`, or start the bridge yourself with `python -m hermes_antigravity serve`. |
 | `'agy models' returned no models` | `agy` is not logged in. Run `agy auth login`. |
+| Terminal windows appear when Hermes starts | Fixed in 0.1.1. An older plugin copy used `DETACHED_PROCESS`, which still lets Windows open a console for `python.exe`. Re-copy step 4. |
 
 ## Development
 
