@@ -28,7 +28,16 @@ antigravity = ProviderProfile(
     display_name="Google Antigravity (agy)",
     description="Antigravity models through the official agy CLI (local bridge)",
     signup_url="https://antigravity.google/",
-    env_vars=("HERMES_ANTIGRAVITY_BASE_URL", "HERMES_ANTIGRAVITY_COMMAND"),
+    # Hermes requires a credential for every api_key provider. The bridge is
+    # unauthenticated loopback, so HERMES_ANTIGRAVITY_API_KEY is a placeholder
+    # that only has to be non-empty — the real Antigravity credential never
+    # leaves agy. It is listed first because Hermes resolves the key from the
+    # first of these env vars that is set.
+    env_vars=(
+        "HERMES_ANTIGRAVITY_API_KEY",
+        "HERMES_ANTIGRAVITY_BASE_URL",
+        "HERMES_ANTIGRAVITY_COMMAND",
+    ),
     base_url=os.getenv("HERMES_ANTIGRAVITY_BASE_URL", "").strip() or DEFAULT_BASE_URL,
     api_mode="chat_completions",
     auth_type="api_key",  # the bridge is unauthenticated loopback; agy holds the real token

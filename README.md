@@ -53,10 +53,15 @@ cd hermes-antigravity-provider
 pip install -e .
 ```
 
+> **On the command name.** All commands below use `python -m hermes_antigravity`,
+> which always works. `pip` also installs a `hermes-antigravity` console script,
+> but on many systems its directory is not on `PATH` — if `hermes-antigravity`
+> is not found, that is why, and the module form is the fix.
+
 ### 3. Install the two `agy` agents
 
 ```bash
-hermes-antigravity setup
+python -m hermes_antigravity setup
 ```
 
 This installs an `agy` plugin defining two agents. It is not optional — it is what makes the provider affordable, and the numbers are in [Cost](#cost) below.
@@ -70,26 +75,68 @@ To remove them later: `agy plugin uninstall hermes-antigravity`.
 
 ### 4. Install the Hermes provider plugin
 
-Copy the plugin directory into your Hermes home. Hermes discovers user plugins from `$HERMES_HOME/plugins/model-providers/` with no changes to the Hermes repo.
+Hermes discovers user plugins from `$HERMES_HOME/plugins/model-providers/`, with no changes to the Hermes repo.
+
+**Find your Hermes home first — it is usually not `~/.hermes`.** On Windows it defaults to `%LOCALAPPDATA%\hermes`:
+
+```bash
+echo $HERMES_HOME
+```
 
 Linux and macOS:
 
 ```bash
-mkdir -p ~/.hermes/plugins/model-providers
-cp -r plugins/model-providers/antigravity ~/.hermes/plugins/model-providers/
+HH="${HERMES_HOME:-$HOME/.hermes}"
+mkdir -p "$HH/plugins/model-providers"
+cp -r plugins/model-providers/antigravity "$HH/plugins/model-providers/"
 ```
 
 Windows PowerShell:
 
 ```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.hermes\plugins\model-providers"
-Copy-Item -Recurse plugins\model-providers\antigravity "$env:USERPROFILE\.hermes\plugins\model-providers\"
+$HH = if ($env:HERMES_HOME) { $env:HERMES_HOME } else { "$env:LOCALAPPDATA\hermes" }
+New-Item -ItemType Directory -Force "$HH\plugins\model-providers"
+Copy-Item -Recurse plugins\model-providers\antigravity "$HH\plugins\model-providers\"
 ```
 
-### 5. Check everything
+### 5. Enable the plugin
+
+Hermes discovers user plugins but does not enable them automatically:
 
 ```bash
-hermes-antigravity doctor
+hermes plugins enable antigravity
+```
+
+Hermes will ask whether to grant tool-override permission. **Answer no.** This provider only declares an inference backend and never needs to intercept built-in tools.
+
+Confirm:
+
+```bash
+hermes plugins list
+```
+
+The `antigravity` row should read `enabled`.
+
+### 6. Set the placeholder API key
+
+Hermes requires a credential for every provider. The bridge is unauthenticated loopback, so the value only has to be non-empty — your real Antigravity credential stays inside `agy` and is never read by Hermes or by this package.
+
+```bash
+export HERMES_ANTIGRAVITY_API_KEY=local-bridge
+```
+
+Windows PowerShell:
+
+```powershell
+$env:HERMES_ANTIGRAVITY_API_KEY = "local-bridge"
+```
+
+Without it, Hermes fails with `No usable credentials found for provider 'antigravity'`.
+
+### 7. Check everything
+
+```bash
+python -m hermes_antigravity doctor
 ```
 
 Expected:
@@ -104,10 +151,10 @@ Expected:
 
 Any `[fail]` line tells you the command to run.
 
-### 6. Start the bridge
+### 8. Start the bridge
 
 ```bash
-hermes-antigravity serve
+python -m hermes_antigravity serve
 ```
 
 It listens on `http://127.0.0.1:8787/v1`, loopback only. Leave it running while you use Hermes — the provider talks to it.
@@ -115,18 +162,25 @@ It listens on `http://127.0.0.1:8787/v1`, loopback only. Leave it running while 
 To use a different port:
 
 ```bash
-hermes-antigravity serve --port 9000
+python -m hermes_antigravity serve --port 9000
 ```
 
 and set `HERMES_ANTIGRAVITY_BASE_URL=http://127.0.0.1:9000/v1` before starting Hermes.
 
-### 7. Use it
+### 9. Use it
 
 ```bash
-hermes /model --provider antigravity claude-sonnet-4-6
+hermes -z "Reply with exactly the word PONG." --provider antigravity -m gemini-3.6-flash-low
 ```
 
-Verify the bridge directly at any point:
+That is the end-to-end check: it should print `PONG`. Then pick a model for
+interactive use:
+
+```bash
+hermes model
+```
+
+Verify the bridge on its own at any point:
 
 ```bash
 curl http://127.0.0.1:8787/v1/models
@@ -180,6 +234,7 @@ The first request sends the full conversation. `agy` returns a `conversation_id`
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
+| `HERMES_ANTIGRAVITY_API_KEY` | Placeholder credential; any non-empty value. Required by Hermes. | unset — Hermes errors without it |
 | `HERMES_ANTIGRAVITY_COMMAND` | Path to the `agy` binary | found on `PATH` |
 | `AGY_CLI_PATH` | Alternate path variable, checked second | — |
 | `HERMES_ANTIGRAVITY_BASE_URL` | Where the provider expects the bridge | `http://127.0.0.1:8787/v1` |
@@ -192,6 +247,17 @@ The first request sends the full conversation. `agy` returns a `conversation_id`
 - **Free-tier limits.** Rate limits and 429s are between you and Google. This package does not retry around them, and deliberately has no mechanism to spread load across accounts.
 - **Images are dropped** with a text placeholder. `agy` print mode is text-only.
 - **The ~5k token floor** per request cannot be removed from outside `agy`.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `No usable credentials found for provider 'antigravity'` | `HERMES_ANTIGRAVITY_API_KEY` is unset. See step 6; any non-empty value works. |
+| Hermes does not list the provider | The plugin is discovered but not enabled. Run `hermes plugins enable antigravity`, then check `hermes plugins list`. |
+| Plugin not discovered at all | It went into the wrong directory. Hermes home is often `%LOCALAPPDATA%\hermes` on Windows, not `~/.hermes` — check `echo $HERMES_HOME` and redo step 4. |
+| `hermes-antigravity: command not found` | The console script directory is not on `PATH`. Use `python -m hermes_antigravity` instead. |
+| Connection refused from Hermes | The bridge is not running. Start it with `python -m hermes_antigravity serve` and confirm with `curl http://127.0.0.1:8787/v1/models`. |
+| `'agy models' returned no models` | `agy` is not logged in. Run `agy auth login`. |
 
 ## Development
 
