@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-antigravity-provider"
-version = "0.1.2"
+version = "0.2.0"
 description = "Run Google Antigravity models in Hermes Agent through the official agy CLI"
 readme = "README.md"
 requires-python = ">=3.10"

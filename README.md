@@ -202,6 +202,43 @@ Hermes routes inference over HTTP. It does have a subprocess provider path — `
 
 [NousResearch/hermes-agent#84057](https://github.com/NousResearch/hermes-agent/pull/84057) is a step toward that: it generalises the command resolution behind `external_process` so it is no longer hardcoded to Copilot.
 
+## Identity and memory
+
+Hermes sends its own system message on every request — roughly 34,000 characters
+carrying "You are Hermes Agent, created by Nous Research", the instruction to
+identify as Hermes rather than the underlying model, the contents of `SOUL.md`,
+`memories/USER.md` and `memories/MEMORY.md`, and a tools array. This package
+passes all of it through untouched.
+
+Two things support that:
+
+**The agents claim no identity of their own.** `hermes-passthrough` and
+`hermes-reader` are written to defer to the prompt's system instructions and are
+told explicitly not to introduce themselves as Antigravity, Gemini, or Claude.
+An agent that asserted its own persona would compete with Hermes's.
+
+**Direct callers get the context too.** A request arriving with no system
+message — `curl`, a script, another OpenAI-compatible client — would otherwise
+leave the model with no identity and no memory. The bridge detects that case and
+builds a system message from the same files under `$HERMES_HOME`, plus the list
+of installed skills from `$HERMES_HOME/skills/`. Each file is capped at 8,000
+characters so a large `MEMORY.md` cannot blow the prompt budget on its own.
+
+This never fires on the Hermes path, because Hermes always sends a system
+message. Set `HERMES_ANTIGRAVITY_NO_CONTEXT=1` to disable it entirely.
+
+Verified both ways: through Hermes, and via `curl` with no system message, the
+answer to "who are you" is "I am Hermes, an intelligent AI assistant created by
+Nous Research".
+
+## Note on prompt size
+
+A real Hermes request is about 34,000 characters, which is over the 30,000-byte
+argv ceiling this package uses on Windows. Ordinary Hermes traffic therefore
+takes the file-handoff path described above rather than argv, and runs under
+`hermes-reader`. That is expected, not a fault — it is the reason the file path
+exists.
+
 ## Cost
 
 `agy` normally injects its own system prompt plus roughly fifty tool definitions into every call. Measured on Windows 11 with `gemini-3.6-flash-low`:
@@ -247,6 +284,8 @@ The first request sends the full conversation. `agy` returns a `conversation_id`
 | `HERMES_ANTIGRAVITY_API_KEY` | Placeholder credential; any non-empty value | set to `local-bridge` by the plugin |
 | `HERMES_ANTIGRAVITY_NO_AUTOSTART` | Any non-empty value disables bridge autostart | unset |
 | `HERMES_ANTIGRAVITY_PYTHON` | Interpreter used to start the bridge | `sys.executable`, then `PATH` |
+| `HERMES_ANTIGRAVITY_NO_CONTEXT` | Any non-empty value disables the identity/memory fallback | unset |
+| `HERMES_HOME` | Where Hermes keeps `SOUL.md`, `memories/`, and `skills/` | `%LOCALAPPDATA%\hermes`, else `~/.hermes` |
 | `HERMES_ANTIGRAVITY_COMMAND` | Path to the `agy` binary | found on `PATH` |
 | `AGY_CLI_PATH` | Alternate path variable, checked second | — |
 | `HERMES_ANTIGRAVITY_BASE_URL` | Where the provider expects the bridge | `http://127.0.0.1:8787/v1` |

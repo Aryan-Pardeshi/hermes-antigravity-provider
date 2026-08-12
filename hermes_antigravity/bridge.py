@@ -22,7 +22,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from . import agy, translate
+from . import agy, context, translate
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
@@ -48,6 +48,11 @@ def run_completion(payload: dict[str, Any]) -> dict[str, Any]:
     messages = list(payload.get("messages") or [])
     if not messages:
         raise ValueError("'messages' must not be empty.")
+
+    # Hermes always sends its own system message, so this is a no-op there.
+    # It only fills in for direct callers (curl, scripts, other clients) that
+    # would otherwise leave the model with no identity and no memory.
+    messages = context.ensure_context(messages)
 
     model = str(payload.get("model") or "").strip()
     if not model:
