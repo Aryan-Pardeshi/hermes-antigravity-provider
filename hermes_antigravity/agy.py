@@ -31,6 +31,17 @@ READER_AGENT = "hermes-reader"
 
 DEFAULT_TIMEOUT_SECONDS = 600
 
+#: CREATE_NO_WINDOW. `agy` is a console application, so on Windows every
+#: invocation opens its own terminal window unless this is passed. That is
+#: especially visible when the bridge itself runs windowless under pythonw:
+#: the parent has no console to inherit, so each child gets a brand new one.
+_CREATE_NO_WINDOW = 0x08000000
+
+
+def no_window_flags() -> int:
+    """Creation flags that keep child processes off screen on Windows."""
+    return _CREATE_NO_WINDOW if os.name == "nt" else 0
+
 
 class AgyError(RuntimeError):
     """Raised when the `agy` CLI is missing, fails, or returns nothing usable."""
@@ -73,6 +84,7 @@ def list_models(*, timeout: int = 60) -> list[dict[str, str]]:
             text=True,
             timeout=timeout,
             check=False,
+            creationflags=no_window_flags(),
         )
     except subprocess.TimeoutExpired as exc:
         raise AgyError("Timed out listing Antigravity models.") from exc
@@ -198,6 +210,7 @@ def run(
                 text=True,
                 timeout=timeout_seconds + 60,
                 check=False,
+                creationflags=no_window_flags(),
             )
         except subprocess.TimeoutExpired as exc:
             raise AgyError(

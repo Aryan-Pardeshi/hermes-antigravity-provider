@@ -270,7 +270,7 @@ The first request sends the full conversation. `agy` returns a `conversation_id`
 | `hermes-antigravity: command not found` | The console script directory is not on `PATH`. Use `python -m hermes_antigravity` instead. |
 | Connection refused from Hermes | Autostart could not find an interpreter with the package. Set `HERMES_ANTIGRAVITY_PYTHON`, or start the bridge yourself with `python -m hermes_antigravity serve`. |
 | `'agy models' returned no models` | `agy` is not logged in. Run `agy auth login`. |
-| Terminal windows appear when Hermes starts | Fixed in 0.1.1. An older plugin copy used `DETACHED_PROCESS`, which still lets Windows open a console for `python.exe`. Re-copy step 4. |
+| Terminal windows appear on Windows | Fixed in 0.1.2. Two separate causes: the plugin used `DETACHED_PROCESS`, which still lets Windows open a console, and the bridge spawned `agy` with no flags at all — since `agy` is a console app and the bridge runs under `pythonw`, every model call opened a window. Upgrade the package and re-copy step 4. |
 
 ## Development
 

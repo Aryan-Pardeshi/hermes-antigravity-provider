@@ -23,7 +23,12 @@ AGENT_NAMES = (agy.PASSTHROUGH_AGENT, agy.READER_AGENT)
 
 def _run(args: list[str], *, timeout: int = 180) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        args, capture_output=True, text=True, timeout=timeout, check=False
+        args,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+        creationflags=agy.no_window_flags(),
     )
 
 
