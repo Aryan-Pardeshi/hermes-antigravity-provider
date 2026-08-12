@@ -217,6 +217,87 @@ The first request sends the whole conversation. `agy` returns a
 `conversation_id`, replayed with `--conversation` on later turns so history is
 not resent.
 
+## Field notes
+
+Things that cost time to discover and are not documented anywhere obvious.
+Useful even if you never touch Hermes and just want to script `agy`.
+
+### `agy`'s plugin format is `plugin.json`, not `gemini-extension.json`
+
+Dropping a directory into `~/.gemini/extensions/` does nothing on its own. The
+manifest must be `plugin.json`, and the plugin has to be installed:
+
+```bash
+agy plugin validate ./my-plugin    # tells you exactly what is missing
+agy plugin install  ./my-plugin
+agy agents                          # confirm the agent registered
+```
+
+Agents are markdown files in `agents/`, with YAML frontmatter:
+
+```markdown
+---
+name: my-agent
+description: What it is for.
+tools: []
+---
+
+Instructions here.
+```
+
+**`tools: []` is the whole trick.** It is what removes the ~24k tokens of
+injected tool definitions, and it also means the agent physically cannot take
+autonomous actions mid-request.
+
+### The `stream-json` event shape
+
+`--output-format stream-json` emits NDJSON with three event kinds:
+
+| Event | Carries |
+| --- | --- |
+| `init` | `conversation_id`, the model, the full tool list, `permission_mode` |
+| `step_update` | `step_type`; when that is `agent_response`, a `text_delta` |
+| `result` | `status`, `usage`, and `structured_output` when a schema was enforced |
+
+Token counts arrive in `usage` as `input_tokens`, `output_tokens`,
+`thinking_tokens` and `cache_read_tokens`.
+
+### There is no stdin path
+
+`agy` will not read a prompt from stdin. Both of these fail:
+
+```bash
+printf 'hello' | agy -p ""     # Error: empty prompt
+printf 'hello' | agy -p -      # treats "-" as the prompt
+```
+
+The prompt is argv or a file. That is the constraint the whole
+[long prompt](#long-prompts) design works around.
+
+### `agy` is not permissive by default
+
+The `init` event reports `permission_mode: "request-review"`. Tool calls are
+gated unless you pass `--dangerously-skip-permissions`, which is opt-in. Worth
+stating because it is commonly assumed the other way around.
+
+### Multi-turn is supported
+
+`--continue` resumes the most recent conversation and `--conversation <id>`
+resumes a specific one, using the id from the `init` event.
+
+### On Windows, `DETACHED_PROCESS` is the wrong flag
+
+To spawn a background process with no console, use `CREATE_NO_WINDOW`
+(`0x08000000`). `DETACHED_PROCESS` (`0x8`) detaches the child from the parent's
+console but still lets Windows allocate a fresh visible one for a console
+application — which looks identical to having passed no flag at all.
+
+This bites hardest once the parent is already windowless: with no console to
+inherit, every child gets a brand new one. `agy` is a console application, so a
+bridge running under `pythonw.exe` opened a terminal on **every model call**
+until each spawn site passed the flag. Preferring `pythonw.exe` over
+`python.exe` where both exist removes the parent's console for free.
+
 ## Performance
 
 A trivial prompt takes about 17.7s end to end:
