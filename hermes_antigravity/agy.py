@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass, field
 from typing import Any, Iterator
 
@@ -70,12 +71,32 @@ def resolve_command() -> str:
     return resolved
 
 
-def list_models(*, timeout: int = 60) -> list[dict[str, str]]:
+#: `agy models` costs about 4.7s per call, and Hermes hits /v1/models every
+#: time the model picker opens. The list changes rarely, so it is cached.
+MODELS_CACHE_TTL_SECONDS = 900
+_MODELS_CACHE: tuple[float, list[dict[str, str]]] | None = None
+
+
+def clear_models_cache() -> None:
+    """Drop the cached model list."""
+    global _MODELS_CACHE
+    _MODELS_CACHE = None
+
+
+def list_models(*, timeout: int = 60, refresh: bool = False) -> list[dict[str, str]]:
     """Return the models `agy` currently offers.
 
     Parses the ``id<TAB>Display Name`` lines printed by ``agy models`` so the
-    plugin never carries a hardcoded model list that can drift.
+    plugin never carries a hardcoded model list that can drift. Results are
+    cached for MODELS_CACHE_TTL_SECONDS; pass refresh=True to bypass.
     """
+    global _MODELS_CACHE
+
+    if not refresh and _MODELS_CACHE is not None:
+        cached_at, cached = _MODELS_CACHE
+        if time.monotonic() - cached_at < MODELS_CACHE_TTL_SECONDS:
+            return cached
+
     command = resolve_command()
     try:
         completed = subprocess.run(
@@ -104,6 +125,7 @@ def list_models(*, timeout: int = 60) -> list[dict[str, str]]:
             models.append({"id": model_id, "display_name": display.strip()})
     if not models:
         raise AgyError("'agy models' returned no models. Run 'agy auth login' first.")
+    _MODELS_CACHE = (time.monotonic(), models)
     return models
 
 
@@ -260,3 +282,65 @@ def run(
             f"{(completed.stderr or '').strip()[:300]}"
         )
     return result
+
+
+def stream(
+    prompt: str,
+    *,
+    model: str,
+    conversation_id: str = "",
+    effort: str = "",
+    sandbox: bool = True,
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+    agent: str | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Yield `agy` NDJSON events as they arrive.
+
+    :func:`run` waits for the process to exit, so the caller sees nothing until
+    the whole answer exists. Streaming does not shrink the fixed startup cost —
+    measured at roughly 10s before `agy` emits its first event — but for a long
+    answer it is the difference between watching it appear and staring at a
+    blank screen until it is finished.
+
+    Only safe for turns without tools: a tool call is not decidable until the
+    reply is complete.
+    """
+    prepared = prepare_prompt(prompt)
+    process = None
+    try:
+        chosen_agent = agent
+        if chosen_agent is None:
+            chosen_agent = READER_AGENT if prepared.used_file else PASSTHROUGH_AGENT
+
+        args = build_args(
+            model=model,
+            prepared=prepared,
+            agent=chosen_agent,
+            conversation_id=conversation_id,
+            effort=effort,
+            sandbox=sandbox,
+            timeout_seconds=timeout_seconds,
+        )
+
+        process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+            creationflags=no_window_flags(),
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                continue
+        process.wait(timeout=30)
+    finally:
+        if process is not None and process.poll() is None:
+            process.kill()
+        prepared.cleanup()

@@ -296,6 +296,38 @@ exists.
 
 That is why step 3 exists. There is still a floor of roughly 5k input tokens per request that `agy` adds and this package cannot remove.
 
+## Latency
+
+Measured on Windows 11 with `gemini-3.6-flash-low`, timing a trivial prompt:
+
+| Phase | Time |
+| --- | --- |
+| `agy` binary startup (`agy --version`) | 0.24s |
+| Until `agy` emits its first event | ~10.1s |
+| Until the first token of the answer | ~16.5s |
+| Total | ~17.7s |
+
+**Most of it is not reachable from here.** The ~10s before the first event is
+`agy`'s own session setup, and nothing available from outside the binary moves
+it: `--sandbox` costs nothing (18.4s vs 18.8s with and without), and resuming an
+existing conversation with `--conversation` saves about 1s (17.6s to 16.6s).
+
+Two things this package does do:
+
+**The model list is cached** for 15 minutes. `agy models` takes about 5s and
+Hermes calls `/v1/models` every time the picker opens; cached, it returns in
+about 10 microseconds. It also rides out the occasional stall — one `agy models`
+call during testing hung past 60s, which would otherwise have emptied the picker.
+
+**Streaming is real.** Text deltas are forwarded as `agy` produces them rather
+than buffered until the process exits. On a 120-word answer through the bridge,
+first visible text arrived at 17.95s streamed against 19.95s buffered, and the
+gap widens with answer length. Streaming is skipped when the request declares
+tools, because a tool call is not decidable until the reply is complete.
+
+So expect roughly 15-20s for a short answer. That is the floor `agy` imposes,
+not overhead this package adds.
+
 ## How it works
 
 ### Function calling

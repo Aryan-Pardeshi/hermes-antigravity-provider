@@ -116,6 +116,70 @@ def run_completion(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def stream_completion(payload: dict[str, Any]):
+    """Yield OpenAI SSE chunk bodies as `agy` produces text.
+
+    Used only when the caller asked for streaming and declared no tools; a
+    tool call cannot be decided until the reply is complete, so those turns
+    fall back to the buffered path.
+    """
+    messages = context.ensure_context(list(payload.get("messages") or []))
+    model = str(payload.get("model") or "").strip()
+    effort = str(payload.get("reasoning_effort") or "").strip().lower()
+    if effort not in EFFORT_VALUES:
+        effort = ""
+
+    key = _conversation_key(messages)
+    conversation_id = _CONVERSATIONS.get(key, "")
+    prompt = (
+        translate.render_latest_turn(messages)
+        if conversation_id
+        else translate.render_messages(messages)
+    )
+
+    base = {
+        "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": model,
+    }
+    usage: dict[str, Any] = {}
+    started = False
+
+    for event in agy.stream(prompt, model=model, conversation_id=conversation_id, effort=effort):
+        kind = event.get("event")
+        if kind == "result":
+            payload_result = event.get("result") or {}
+            usage = payload_result.get("usage") or {}
+            new_id = str(payload_result.get("conversation_id") or "")
+            if new_id and key:
+                _CONVERSATIONS[key] = new_id
+            continue
+        if kind != "step_update":
+            continue
+        update = event.get("step_update") or {}
+        if update.get("step_type") != "agent_response":
+            continue
+        delta_text = update.get("text_delta")
+        if not delta_text:
+            continue
+        delta: dict[str, Any] = {"content": str(delta_text)}
+        if not started:
+            delta = {"role": "assistant", **delta}
+            started = True
+        yield json.dumps(
+            {**base, "choices": [{"index": 0, "delta": delta, "finish_reason": None}]}
+        )
+
+    yield json.dumps(
+        {
+            **base,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            "usage": translate.map_usage(usage),
+        }
+    )
+
+
 def _stream_chunks(response: dict[str, Any]) -> list[str]:
     """Split a buffered response into OpenAI SSE chunks.
 
@@ -172,6 +236,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def _begin_sse(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
     def _send_error(self, status: int, message: str) -> None:
         self._send_json(status, {"error": {"message": message, "type": "invalid_request_error"}})
 
@@ -211,6 +282,22 @@ class Handler(BaseHTTPRequestHandler):
             self._send_error(400, f"Invalid JSON body: {exc}")
             return
 
+        wants_stream = bool(payload.get("stream"))
+
+        # True streaming only when no tools were declared: a tool call is not
+        # decidable until the whole reply exists, so those turns stay buffered.
+        if wants_stream and not payload.get("tools"):
+            self._begin_sse()
+            try:
+                for chunk in stream_completion(payload):
+                    self.wfile.write(f"data: {chunk}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+            except (ValueError, agy.AgyError) as exc:
+                error = json.dumps({"error": {"message": str(exc)}})
+                self.wfile.write(f"data: {error}\n\n".encode("utf-8"))
+            self.wfile.write(b"data: [DONE]\n\n")
+            return
+
         try:
             response = run_completion(payload)
         except ValueError as exc:
@@ -220,15 +307,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send_error(502, str(exc))
             return
 
-        if not payload.get("stream"):
+        if not wants_stream:
             self._send_json(200, response)
             return
 
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "close")
-        self.end_headers()
+        self._begin_sse()
         for chunk in _stream_chunks(response):
             self.wfile.write(f"data: {chunk}\n\n".encode("utf-8"))
         self.wfile.write(b"data: [DONE]\n\n")
