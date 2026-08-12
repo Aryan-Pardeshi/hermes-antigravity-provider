@@ -97,6 +97,13 @@ def doctor() -> int:
             print(f"[fail] agent {name} not installed — run: hermes-antigravity setup")
             problems += 1
 
+    if config_is_declared():
+        print("[ok]   config.yaml declares the provider")
+    else:
+        print("[fail] config.yaml does not declare the provider — run:")
+        print("       python -m hermes_antigravity config")
+        problems += 1
+
     hermes = shutil.which("hermes")
     if hermes:
         print(f"[ok]   hermes CLI: {hermes}")
@@ -104,3 +111,105 @@ def doctor() -> int:
         print("[warn] hermes CLI not on PATH — the bridge still works standalone")
 
     return 1 if problems else 0
+
+
+# =============================================================================
+# config.yaml provider entry
+# =============================================================================
+#
+# Hermes resolves providers twice, through two unrelated paths:
+#
+#   * inference — providers/_discover_providers() scans
+#     $HERMES_HOME/plugins/model-providers/, which is how the plugin is found
+#   * model switching — resolve_provider_full() in hermes_cli/providers.py,
+#     whose chain is built-in table, then models.dev, then config.yaml
+#
+# The second path never consults the plugin registry, so a plugin-only install
+# runs fine from `hermes -z --provider antigravity` but fails to switch models
+# in the desktop app with "Unknown provider 'antigravity'". Declaring the
+# provider in config.yaml covers the second path.
+
+CONFIG_PROVIDER_ID = "antigravity"
+
+CONFIG_ENTRY = {
+    "name": "Google Antigravity (agy)",
+    "api": "http://127.0.0.1:8787/v1",
+    "key_env": "HERMES_ANTIGRAVITY_API_KEY",
+    "transport": "openai_chat",
+}
+
+
+def config_path() -> Path | None:
+    """Hermes's config.yaml, if HERMES_HOME can be located."""
+    from . import context
+
+    home = context.hermes_home()
+    if home is None:
+        return None
+    candidate = home / "config.yaml"
+    return candidate if candidate.is_file() else None
+
+
+def configure_provider(base_url: str = "") -> int:
+    """Add the provider to config.yaml so model switching can resolve it."""
+    try:
+        import yaml
+    except ImportError:
+        print("error: pyyaml is required to edit config.yaml", file=sys.stderr)
+        return 1
+
+    path = config_path()
+    if path is None:
+        print("error: could not find HERMES_HOME/config.yaml", file=sys.stderr)
+        return 1
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"error: could not read {path}: {exc}", file=sys.stderr)
+        return 1
+
+    entry = dict(CONFIG_ENTRY)
+    if base_url:
+        entry["api"] = base_url
+
+    providers = data.get("providers")
+    if not isinstance(providers, dict):
+        providers = {}
+    if providers.get(CONFIG_PROVIDER_ID) == entry:
+        print(f"config.yaml already declares '{CONFIG_PROVIDER_ID}'")
+        return 0
+
+    providers[CONFIG_PROVIDER_ID] = entry
+    data["providers"] = providers
+
+    backup = path.with_suffix(".yaml.bak-antigravity")
+    try:
+        if not backup.exists():
+            backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        path.write_text(
+            yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8"
+        )
+    except OSError as exc:
+        print(f"error: could not write {path}: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"declared '{CONFIG_PROVIDER_ID}' in {path} (backup: {backup.name})")
+    return 0
+
+
+def config_is_declared() -> bool:
+    """True when config.yaml already declares the provider."""
+    try:
+        import yaml
+    except ImportError:
+        return False
+    path = config_path()
+    if path is None:
+        return False
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return False
+    providers = data.get("providers")
+    return isinstance(providers, dict) and CONFIG_PROVIDER_ID in providers

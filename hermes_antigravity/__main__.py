@@ -17,6 +17,8 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--port", type=int, default=bridge.DEFAULT_PORT)
 
     sub.add_parser("setup", help="Install the minimal agy agents.")
+    cfg = sub.add_parser("config", help="Declare the provider in Hermes config.yaml.")
+    cfg.add_argument("--base-url", default="", help="Override the bridge URL.")
     sub.add_parser("models", help="List models agy currently offers.")
     sub.add_parser("doctor", help="Check that everything is wired up.")
 
@@ -27,7 +29,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "setup":
-        return setup_mod.install_agents()
+        code = setup_mod.install_agents()
+        return code or setup_mod.configure_provider()
+
+    if args.command == "config":
+        return setup_mod.configure_provider(args.base_url)
 
     if args.command == "models":
         try:

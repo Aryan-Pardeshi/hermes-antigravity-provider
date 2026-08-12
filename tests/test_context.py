@@ -94,3 +94,67 @@ class TestEnsureContext:
         messages = [{"role": "user", "content": "hi"}]
 
         assert context.ensure_context(messages) == messages
+
+
+class TestConfigDeclaration:
+    """Hermes resolves providers twice; config.yaml covers the model switcher."""
+
+    @pytest.fixture
+    def hermes_home_with_config(self, tmp_path, monkeypatch):
+        (tmp_path / "config.yaml").write_text(
+            "model:\n  default: something\n", encoding="utf-8"
+        )
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        return tmp_path
+
+    def test_declares_the_provider(self, hermes_home_with_config):
+        from hermes_antigravity import setup as setup_mod
+        import yaml
+
+        assert setup_mod.config_is_declared() is False
+        assert setup_mod.configure_provider() == 0
+
+        data = yaml.safe_load((hermes_home_with_config / "config.yaml").read_text(encoding="utf-8"))
+        entry = data["providers"]["antigravity"]
+        assert entry["api"] == "http://127.0.0.1:8787/v1"
+        assert entry["key_env"] == "HERMES_ANTIGRAVITY_API_KEY"
+        assert entry["transport"] == "openai_chat"
+        assert setup_mod.config_is_declared() is True
+
+    def test_existing_config_keys_are_preserved(self, hermes_home_with_config):
+        from hermes_antigravity import setup as setup_mod
+        import yaml
+
+        setup_mod.configure_provider()
+        data = yaml.safe_load((hermes_home_with_config / "config.yaml").read_text(encoding="utf-8"))
+
+        assert data["model"]["default"] == "something"
+
+    def test_a_backup_is_written(self, hermes_home_with_config):
+        from hermes_antigravity import setup as setup_mod
+
+        setup_mod.configure_provider()
+
+        assert (hermes_home_with_config / "config.yaml.bak-antigravity").is_file()
+
+    def test_running_twice_is_a_no_op(self, hermes_home_with_config):
+        from hermes_antigravity import setup as setup_mod
+
+        assert setup_mod.configure_provider() == 0
+        assert setup_mod.configure_provider() == 0
+
+    def test_custom_base_url_is_honoured(self, hermes_home_with_config):
+        from hermes_antigravity import setup as setup_mod
+        import yaml
+
+        setup_mod.configure_provider("http://127.0.0.1:9000/v1")
+        data = yaml.safe_load((hermes_home_with_config / "config.yaml").read_text(encoding="utf-8"))
+
+        assert data["providers"]["antigravity"]["api"] == "http://127.0.0.1:9000/v1"
+
+    def test_missing_home_is_reported(self, monkeypatch, tmp_path):
+        from hermes_antigravity import setup as setup_mod
+
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path / "gone"))
+        assert setup_mod.config_path() is None
+        assert setup_mod.configure_provider() == 1

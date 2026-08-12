@@ -99,6 +99,49 @@ New-Item -ItemType Directory -Force "$HH\plugins\model-providers"
 Copy-Item -Recurse plugins\model-providers\antigravity "$HH\plugins\model-providers\"
 ```
 
+### 4b. Declare the provider in config.yaml
+
+```bash
+python -m hermes_antigravity config
+```
+
+`python -m hermes_antigravity setup` already does this, so skip it if you ran
+that after installing. It is listed separately because it is easy to miss why
+it is needed.
+
+**Hermes resolves providers through two unrelated paths.** Inference uses
+`providers/_discover_providers()`, which scans the plugin directory — that is
+how step 4 is found. Model *switching* uses `resolve_provider_full()` in
+`hermes_cli/providers.py`, whose chain is the built-in provider table, then
+models.dev, then `config.yaml`. It never consults the plugin registry.
+
+So a plugin-only install works from the CLI and then fails in the desktop app
+with `Unknown provider 'antigravity'` the moment you try to switch models. The
+command above adds this to `config.yaml`, which covers the second path:
+
+```yaml
+providers:
+  antigravity:
+    name: Google Antigravity (agy)
+    api: http://127.0.0.1:8787/v1
+    key_env: HERMES_ANTIGRAVITY_API_KEY
+    transport: openai_chat
+```
+
+Your existing config is backed up to `config.yaml.bak-antigravity` first, and
+re-running is a no-op.
+
+**One thing the plugin cannot do for you here.** It sets
+`HERMES_ANTIGRAVITY_API_KEY` at import, which is enough for the CLI, but the
+desktop app reads `key_env` from the environment it was launched in. Set it
+permanently so the GUI sees it:
+
+```powershell
+setx HERMES_ANTIGRAVITY_API_KEY local-bridge
+```
+
+Then restart the desktop app.
+
 ### 5. Enable the plugin
 
 Hermes discovers user plugins but does not enable them automatically:
@@ -153,6 +196,7 @@ Expected:
 [ok]   agy login: 11 models available
 [ok]   agent hermes-passthrough
 [ok]   agent hermes-reader
+[ok]   config.yaml declares the provider
 [ok]   hermes CLI: /path/to/hermes
 ```
 
@@ -305,6 +349,8 @@ The first request sends the full conversation. `agy` returns a `conversation_id`
 | --- | --- |
 | `No usable credentials found for provider 'antigravity'` | The plugin sets this automatically; seeing it means an older copy of the plugin is installed. Re-copy step 4, or set `HERMES_ANTIGRAVITY_API_KEY` to any non-empty value. |
 | Hermes does not list the provider | The plugin is discovered but not enabled. Run `hermes plugins enable antigravity`, then check `hermes plugins list`. |
+| `Unknown provider 'antigravity'` when switching models | Model switching does not read the plugin registry, only `config.yaml`. Run `python -m hermes_antigravity config` and restart. |
+| Works in the CLI, fails in the desktop app | Same cause as above, plus `HERMES_ANTIGRAVITY_API_KEY` must exist in the environment the GUI was launched from. `setx HERMES_ANTIGRAVITY_API_KEY local-bridge`, then restart the app. |
 | Plugin not discovered at all | It went into the wrong directory. Hermes home is often `%LOCALAPPDATA%\hermes` on Windows, not `~/.hermes` — check `echo $HERMES_HOME` and redo step 4. |
 | `hermes-antigravity: command not found` | The console script directory is not on `PATH`. Use `python -m hermes_antigravity` instead. |
 | Connection refused from Hermes | Autostart could not find an interpreter with the package. Set `HERMES_ANTIGRAVITY_PYTHON`, or start the bridge yourself with `python -m hermes_antigravity serve`. |
