@@ -4,6 +4,17 @@ Run Google Antigravity models inside [Hermes Agent](https://github.com/NousResea
 
 Gives Hermes access to Claude Sonnet 4.6, Claude Opus 4.6, the Gemini 3.x line, and GPT-OSS 120B, with streaming, multi-turn conversations, and function calling.
 
+![The Hermes desktop model picker showing a Google Antigravity (AGY) section listing the Gemini 3.x, Claude Sonnet 4.6 and related models](docs/screenshots/model-picker.png)
+
+Antigravity models appear in the Hermes model picker as their own provider
+group, alongside every other configured provider.
+
+![A Hermes chat exchange. Asked "hi which modle are u and who are u", the reply is "I am Hermes, your AI assistant created by Nous Research. I am running on Gemini 3.5 Flash (Medium)."](docs/screenshots/identity.png)
+
+Identity is preserved: the assistant answers as Hermes, names Nous Research as
+its creator, and reports the Antigravity model underneath only because it was
+asked which model it runs on.
+
 ## What this does and does not do
 
 This package **shells out to the `agy` binary Google ships**. That is the whole design.
