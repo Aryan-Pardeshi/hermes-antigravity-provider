@@ -179,6 +179,17 @@ which restores the ~23k token overhead *and* re-exposes its own toolset: asked
 for weather with a `get_weather` function declared, it called its built-in
 `search_web` instead. Under the no-tool agent those tools do not exist.
 
+The obvious worry about emulated function calling is whether it survives a real
+agent loop rather than a single toy call. It does:
+
+![A Hermes session summary reading "Explored 5 files, running pwd + 2 commands, used 2 tools", above a list of completed steps: Analyzed image, Computer Use twice, a web search for Windhawk mod settings, a second image analysis, a GitHub issue fetch, a file search, and a terminal command running pwd and two reg query calls, which returned the Windhawk Engine and Settings registry keys](docs/screenshots/agentic-tool-use.png)
+
+That is one Hermes turn served entirely by this provider: image analysis,
+computer use, a web search, a GitHub fetch, a file search and shell commands,
+chained across multiple tool calls. Every one of those was a `tool_calls`
+response reconstructed from prompted JSON, because `agy` has no tool-spec flag
+to hand them to.
+
 ### Long prompts
 
 `agy` takes its prompt as one argv entry, and every OS caps how long a single
@@ -346,6 +357,7 @@ python -m hermes_antigravity serve     # run the bridge in the foreground
 
 ## Limitations
 
+- **Tool calling is emulated, not native.** It works — see the agent loop under [Function calling](#function-calling) — but it rests on the model returning well-formed JSON rather than on a provider-side guarantee. A model that ignores the format produces a plain text reply instead of a tool call.
 - **Sampling parameters are ignored.** `agy` exposes no `--temperature`, `--top-p`, `--max-tokens` or stop sequences. Hermes may send them; they have no effect. `reasoning_effort` of `low`/`medium`/`high` maps onto `--effort`.
 - **~5k input-token floor** per request that `agy` adds and this cannot remove.
 - **~15-20s latency** for a short answer, dominated by `agy` session setup.
