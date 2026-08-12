@@ -8,6 +8,12 @@ Claude Sonnet 4.6, Claude Opus 4.6, the Gemini 3.x line and GPT-OSS 120B, with s
 
 ![A Hermes chat exchange. Asked "hi which modle are u and who are u", the reply is "I am Hermes, your AI assistant created by Nous Research. I am running on Gemini 3.5 Flash (Medium)."](docs/screenshots/identity.png)
 
+> **Not affiliated with, endorsed by, or sponsored by Google or Nous Research.**
+> "Antigravity", "Gemini" and "Google" are trademarks of Google LLC; "Hermes
+> Agent" is a project of Nous Research. This is an independent wrapper around
+> the publicly distributed `agy` CLI, using its documented flags. No Google
+> code, credentials, or proprietary material is included or redistributed.
+
 ---
 
 ## How it works, in one paragraph
